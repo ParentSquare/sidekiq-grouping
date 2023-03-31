@@ -2,15 +2,7 @@
 
 module Sidekiq
   module Grouping
-    class Scripts
-      SCRIPTS = {
-        pluck: PLUCK_SCRIPT,
-        reliable_pluck: RELIABLE_PLUCK_SCRIPT,
-        requeue: REQUEUE_SCRIPT,
-        unique_requeue: UNIQUE_REQUEUE_SCRIPT,
-        merge_array: MERGE_ARRAY_SCRIPT
-      }.freeze
-
+    class RedisScripts
       PLUCK_SCRIPT = <<-SCRIPT
         local pluck_values = redis.call('lpop', KEYS[1], ARGV[1]) or {}
         if #pluck_values > 0 then
@@ -96,6 +88,14 @@ module Sidekiq
           redis.call('sadd', unique_messages_key, unpack(messages))
         end
       LUA
+
+      SCRIPTS = {
+        pluck: PLUCK_SCRIPT,
+        reliable_pluck: RELIABLE_PLUCK_SCRIPT,
+        requeue: REQUEUE_SCRIPT,
+        unique_requeue: UNIQUE_REQUEUE_SCRIPT,
+        merge_array: MERGE_ARRAY_SCRIPT
+      }.freeze
     end
   end
 end

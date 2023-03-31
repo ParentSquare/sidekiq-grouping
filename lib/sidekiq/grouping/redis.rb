@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "./redis_dispatcher"
+require_relative "./redis_scripts"
 
 module Sidekiq
   module Grouping
@@ -16,7 +17,7 @@ module Sidekiq
           merge_array: nil
         }
 
-        Scripts::SCRIPTS.each_pair do |key, value|
+        RedisScripts::SCRIPTS.each_pair do |key, value|
           @script_hashes[key] = redis { |conn| conn.script(:load, value) }
         end
       end
@@ -68,7 +69,7 @@ module Sidekiq
         if new_redis_client?
           redis_call(
             :eval,
-            PLUCK_SCRIPT,
+            RedisScripts::PLUCK_SCRIPT,
             2,
             ns(name),
             unique_messages_key(name),
@@ -77,7 +78,7 @@ module Sidekiq
         else
           keys = [ns(name), unique_messages_key(name)]
           args = [limit]
-          redis_call(:eval, PLUCK_SCRIPT, keys, args)
+          redis_call(:eval, RedisScripts::PLUCK_SCRIPT, keys, args)
         end
       end
 

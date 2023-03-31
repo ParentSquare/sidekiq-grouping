@@ -42,21 +42,22 @@ describe Sidekiq::Grouping::Batch do
     context "when adding in bulk" do
       it "inserts in batches", :aggregate_failures do
         messages = (0..1005).map(&:to_s)
-        mock_redis = Sidekiq::Grouping::Redis.new
+        mock_redis = instance_double(
+          Sidekiq::Grouping::Redis, push_messages: []
+        )
         allow(Sidekiq::Grouping::Redis).to receive(:new).and_return(mock_redis)
 
         BatchedBulkInsertWorker.perform_async(messages)
-        batch = batch_service.new(
-          BatchedBulkInsertWorker.name,
-          "batched_bulk_insert"
+        expect(mock_redis).to have_received(:push_messages).with(
+          anything,
+          messages[0..999].map(&:to_json),
+          remember_unique: anything
         )
         expect(mock_redis).to have_received(:push_messages).with(
-          anything, messages[0..999].map(&:to_json), anything
+          anything,
+          messages[1000..1005].map(&:to_json),
+          remember_unique: anything
         )
-        expect(mock_redis).to have_received(:push_messages).with(
-          anything, messages[1000..1005].map(&:to_json), anything
-        )
-        expect(batch.size).to eq(1006)
       end
 
       it "raises an exception if argument is not an array" do

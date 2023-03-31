@@ -43,11 +43,11 @@ module Sidekiq
       def add_to_batch(worker_class, queue, msg, redis_pool = nil)
         Sidekiq::Grouping::Batch
           .new(worker_class.name, queue, redis_pool)
-          .public_send(add_method, msg["args"])
+          .public_send(add_method(worker_class), msg["args"])
         nil
       end
 
-      def add_method
+      def add_method(worker_class)
         if worker_class.get_sidekiq_options["batch_merge_array"]
           :merge
         else
