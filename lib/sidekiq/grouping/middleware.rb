@@ -41,12 +41,18 @@ module Sidekiq
       private
 
       def add_to_batch(worker_class, queue, msg, redis_pool = nil)
-        add_method = worker_class.get_sidekiq_options["batch_merge_array"] ? :merge : :add
-
         Sidekiq::Grouping::Batch
           .new(worker_class.name, queue, redis_pool)
           .public_send(add_method, msg["args"])
         nil
+      end
+
+      def add_method
+        if worker_class.get_sidekiq_options["batch_merge_array"]
+          :merge
+        else
+          :add
+        end
       end
 
       def inline_mode?

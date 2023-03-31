@@ -33,9 +33,7 @@ module Sidekiq
       def start!
         interval = Sidekiq::Grouping::Config.poll_interval
         @observer = Sidekiq::Grouping::FlusherObserver.new
-        @task = Concurrent::TimerTask.new(
-          execution_interval: interval
-        ) do
+        @task = Concurrent::TimerTask.new(execution_interval: interval) do
           Sidekiq::Grouping::Flusher.new.flush
           if Sidekiq::Grouping::Config.reliable
             Sidekiq::Grouping::Supervisor.new.requeue_expired

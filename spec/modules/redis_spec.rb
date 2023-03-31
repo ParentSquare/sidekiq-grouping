@@ -84,11 +84,11 @@ describe Sidekiq::Grouping::Redis do
       subject.push_msg(queue_name, "Message 1", true)
       subject.push_msg(queue_name, "Message 2", true)
       pending_queue_name, _ = subject.reliable_pluck(queue_name, 2)
-      expect(redis { |c| c.lrange(pending_queue_name, 0, -1) }).to eq(['Message 1', 'Message 2'])
+      expect(redis { |c| c.lrange(pending_queue_name, 0, -1) }).to eq(["Message 1", "Message 2"])
       subject.remove_from_pending(queue_name, pending_queue_name)
       expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 0
       expect(redis { |c| c.lrange(pending_queue_name, 0, -1) }).to eq([])
-      expect(redis { |c| c.keys('*') }).not_to include(pending_queue_name)
+      expect(redis { |c| c.keys("*") }).not_to include(pending_queue_name)
     end
   end
 
@@ -142,26 +142,26 @@ describe Sidekiq::Grouping::Redis do
     end
   end
 
-  describe '#push_messages' do
+  describe "#push_messages" do
     it "adds messages to queue" do
-      subject.push_messages(queue_name, ['My message', 'My other message', 'My last message'])
+      subject.push_messages(queue_name, ["My message", "My other message", "My last message"])
       expect(redis { |c| c.llen key }).to eq 3
-      expect(redis { |c| c.lrange key, 0, 3 }).to eq ['My message', 'My other message', 'My last message']
+      expect(redis { |c| c.lrange key, 0, 3 }).to eq ["My message", "My other message", "My last message"]
       expect(redis { |c| c.smembers unique_key}).to eq []
     end
 
     it "remembers unique messages if specified" do
-      subject.push_messages(queue_name, ['My message', 'My other message', 'My last message'], true)
-      expect(redis { |c| c.lrange key, 0, 3 }).to eq ['My message', 'My other message', 'My last message']
-      expect(redis { |c| c.smembers unique_key}).to match_array ['My message', 'My other message', 'My last message']
+      subject.push_messages(queue_name, ["My message", "My other message", "My last message"], true)
+      expect(redis { |c| c.lrange key, 0, 3 }).to eq ["My message", "My other message", "My last message"]
+      expect(redis { |c| c.smembers unique_key}).to match_array ["My message", "My other message", "My last message"]
     end
 
     it "adds new messages in order" do
-      subject.push_messages(queue_name, ['My message'], true)
-      expect(redis { |c| c.smembers unique_key}).to match_array ['My message']
-      subject.push_messages(queue_name, ['My other message', 'My message', 'My last message'], true)
-      expect(redis { |c| c.lrange key, 0, 3 }).to eq ['My message', 'My other message', 'My last message']
-      expect(redis { |c| c.smembers unique_key}).to match_array ['My message', 'My other message', 'My last message']
+      subject.push_messages(queue_name, ["My message"], true)
+      expect(redis { |c| c.smembers unique_key}).to match_array ["My message"]
+      subject.push_messages(queue_name, ["My other message", "My message", "My last message"], true)
+      expect(redis { |c| c.lrange key, 0, 3 }).to eq ["My message", "My other message", "My last message"]
+      expect(redis { |c| c.smembers unique_key}).to match_array ["My message", "My other message", "My last message"]
     end
   end
 end

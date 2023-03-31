@@ -30,15 +30,32 @@ module Sidekiq
       end
 
       def merge(messages)
-        # messages is expected to be an array with a single item which is an array of elements that would normally be added using Sidekiq::Grouping::Batch#add
-        raise "batch_merge_array worker received #{messages.size} arguments. Expected a single Array of elements." if messages.size > 1
+        # messages is expected to be an array with a single item
+        # which is an array of elements that would normally be
+        # added using Sidekiq::Grouping::Batch#add
+        if messages.size > 1
+          raise "batch_merge_array worker received #{messages.size} " \
+                "arguments. Expected a single Array of elements."
+        end
 
         messages = messages.first
-        raise "batch_merge_array worker received type #{messages.class.name}. Expected Array." unless messages.is_a?(Array)
+        unless messages.is_a?(Array)
+          messages_type = messages.class.name
+          raise "batch_merge_array worker received type #{messages_type}. " \
+                "Expected Array."
+        end
 
         messages.each_slice(1000) do |slice|
-          @redis.push_messages(@name, slice.map(&:to_json), enqueue_similar_once?)
+          push_messages(slice.map(&:to_json), enqueue_similar_once?)
         end
+      end
+
+      def push_messages(slice_json, remember_unique)
+        @redis.push_messages(
+          @name,
+          slice_json,
+          remember_unique: remember_unique
+        )
       end
 
       def size

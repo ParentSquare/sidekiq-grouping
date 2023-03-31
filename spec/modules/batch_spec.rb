@@ -26,18 +26,18 @@ describe Sidekiq::Grouping::Batch do
       expect_batch(BatchedBothWorker, "batched_both")
     end
 
-    it 'must not enqueue batched worker' do
-      ReliableBatchedSizeWorker.perform_async('bar')
-      expect_batch(ReliableBatchedSizeWorker, 'reliable_batched_size')
+    it "must not enqueue batched worker" do
+      ReliableBatchedSizeWorker.perform_async("bar")
+      expect_batch(ReliableBatchedSizeWorker, "reliable_batched_size")
     end
 
-    it 'must not enqueue batched worker' do
-      ReliableBatchedUniqueSizeWorker.perform_async('bar')
-      expect_batch(ReliableBatchedUniqueSizeWorker, 'reliable_batched_unique_size')
+    it "must not enqueue batched worker" do
+      ReliableBatchedUniqueSizeWorker.perform_async("bar")
+      expect_batch(ReliableBatchedUniqueSizeWorker, "reliable_batched_unique_size")
     end
 
-    context 'in bulk' do
-      it 'inserts in batches' do
+    context "in bulk" do
+      it "inserts in batches" do
         messages = (0..1005).map(&:to_s)
         mock_redis = Sidekiq::Grouping::Redis.new
         allow(Sidekiq::Grouping::Redis).to receive(:new).and_return(mock_redis)
@@ -45,24 +45,24 @@ describe Sidekiq::Grouping::Batch do
         expect(mock_redis).to receive(:push_messages).with(anything, messages[1000..1005].map(&:to_json), anything).and_call_original
 
         BatchedBulkInsertWorker.perform_async(messages)
-        batch = subject.new(BatchedBulkInsertWorker.name, 'batched_bulk_insert')
+        batch = subject.new(BatchedBulkInsertWorker.name, "batched_bulk_insert")
         expect(batch.size).to eq(1006)
       end
 
-      it 'raises an exception if argument is not an array' do
+      it "raises an exception if argument is not an array" do
         failed = false
         begin
-          BatchedBulkInsertWorker.perform_async('potato')
+          BatchedBulkInsertWorker.perform_async("potato")
         rescue StandardError => e
           failed = true
         end
         expect(failed).to be_truthy
       end
 
-      it 'raises an exception if argument is not a single array' do
+      it "raises an exception if argument is not a single array" do
         failed = false
         begin
-          BatchedBulkInsertWorker.perform_async(['potato'], ['tomato'])
+          BatchedBulkInsertWorker.perform_async(["potato"], ["tomato"])
         rescue StandardError => e
           failed = true
         end
