@@ -46,31 +46,39 @@ class ReliableBatchedSizeWorker
   include Sidekiq::Worker
 
   sidekiq_options(
-    queue: :reliable_batched_size, batch_flush_size: 3, batch_size: 2, batch_ttl: 10
+    queue: :reliable_batched_size,
+    batch_flush_size: 3,
+    batch_size: 2,
+    batch_ttl: 10
   )
 
-  def perform(foo)
-  end
+  def perform(foo); end
 end
 
 class ReliableBatchedUniqueSizeWorker
   include Sidekiq::Worker
 
   sidekiq_options(
-    queue: :reliable_batched_unique_size, batch_flush_size: 3, batch_size: 2, batch_ttl: 10, batch_unique: true
+    queue: :reliable_batched_unique_size,
+    batch_flush_size: 3,
+    batch_size: 2,
+    batch_ttl: 10,
+    batch_unique: true
   )
 
-  def perform(foo)
-  end
+  def perform(foo); end
 end
 
 class BatchedBulkInsertWorker
   include Sidekiq::Worker
 
   sidekiq_options(
-    queue: :batched_bulk_insert, batch_flush_size: 3, batch_size: 2, batch_ttl: 10, batch_merge_array: true
+    queue: :batched_bulk_insert,
+    batch_flush_size: 3,
+    batch_size: 2,
+    batch_ttl: 10,
+    batch_merge_array: true
   )
 
-  def perform(foo)
-  end
+  def perform(foo); end
 end

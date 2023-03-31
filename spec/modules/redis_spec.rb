@@ -45,33 +45,33 @@ describe Sidekiq::Grouping::Redis do
 
   describe "#reliable_pluck" do
     it "removes messages from queue" do
-      subject.push_msg(queue_name, "Message 1")
-      subject.push_msg(queue_name, "Message 2")
-      subject.reliable_pluck(queue_name, 1000)
+      redis_service.push_msg(queue_name, "Message 1")
+      redis_service.push_msg(queue_name, "Message 2")
+      redis_service.reliable_pluck(queue_name, 1000)
       expect(redis { |c| c.llen key }).to eq 0
     end
 
-    it "forgets unique messages" do
-      subject.push_msg(queue_name, "Message 1", true)
-      subject.push_msg(queue_name, "Message 2", true)
+    it "forgets unique messages", :aggregate_failures do
+      redis_service.push_msg(queue_name, "Message 1", true)
+      redis_service.push_msg(queue_name, "Message 2", true)
       expect(redis { |c| c.scard unique_key }).to eq 2
-      subject.reliable_pluck(queue_name, 2)
+      redis_service.reliable_pluck(queue_name, 2)
       expect(redis { |c| c.smembers unique_key }).to eq []
     end
 
-    it "tracks the pending jobs" do
-      subject.push_msg(queue_name, "Message 1", true)
-      subject.push_msg(queue_name, "Message 2", true)
-      subject.reliable_pluck(queue_name, 2)
+    it "tracks the pending jobs", :aggregate_failures do
+      redis_service.push_msg(queue_name, "Message 1", true)
+      redis_service.push_msg(queue_name, "Message 2", true)
+      redis_service.reliable_pluck(queue_name, 2)
       expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 1
       pending_queue_name = redis { |c| c.zscan(pending_jobs, 0)[1][0][0] }
       expect(redis { |c| c.llen(pending_queue_name) }).to eq 2
     end
 
-    it "keeps extra items in the queue" do
-      subject.push_msg(queue_name, "Message 1", true)
-      subject.push_msg(queue_name, "Message 2", true)
-      subject.reliable_pluck(queue_name, 1)
+    it "keeps extra items in the queue", :aggregate_failures do
+      redis_service.push_msg(queue_name, "Message 1", true)
+      redis_service.push_msg(queue_name, "Message 2", true)
+      redis_service.reliable_pluck(queue_name, 1)
       expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 1
       pending_queue_name = redis { |c| c.zscan(pending_jobs, 0)[1][0][0] }
       expect(redis { |c| c.llen(pending_queue_name) }).to eq 1
@@ -80,12 +80,14 @@ describe Sidekiq::Grouping::Redis do
   end
 
   describe "#remove_from_pending" do
-    it "removes pending jobs by name" do
-      subject.push_msg(queue_name, "Message 1", true)
-      subject.push_msg(queue_name, "Message 2", true)
-      pending_queue_name, _ = subject.reliable_pluck(queue_name, 2)
-      expect(redis { |c| c.lrange(pending_queue_name, 0, -1) }).to eq(["Message 1", "Message 2"])
-      subject.remove_from_pending(queue_name, pending_queue_name)
+    it "removes pending jobs by name", :aggregate_failures do
+      redis_service.push_msg(queue_name, "Message 1", true)
+      redis_service.push_msg(queue_name, "Message 2", true)
+      pending_queue_name, = redis_service.reliable_pluck(queue_name, 2)
+      expect(redis { |c| c.lrange(pending_queue_name, 0, -1) }).to eq(
+        ["Message 1", "Message 2"]
+      )
+      redis_service.remove_from_pending(queue_name, pending_queue_name)
       expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 0
       expect(redis { |c| c.lrange(pending_queue_name, 0, -1) }).to eq([])
       expect(redis { |c| c.keys("*") }).not_to include(pending_queue_name)
@@ -93,75 +95,122 @@ describe Sidekiq::Grouping::Redis do
   end
 
   describe "#requeue_expired" do
-    it "requeues expired jobs" do
-      subject.push_msg(queue_name, "Message 1", false)
-      subject.push_msg(queue_name, "Message 2", false)
-      pending_queue_name, _ = subject.reliable_pluck(queue_name, 2)
-      expect(subject.requeue_expired(queue_name, false, 500).size).to eq 0
+    it "requeues expired jobs", :aggregate_failures do
+      redis_service.push_msg(queue_name, "Message 1", false)
+      redis_service.push_msg(queue_name, "Message 2", false)
+      pending_queue_name, = redis_service.reliable_pluck(queue_name, 2)
+      expect(redis_service.requeue_expired(queue_name, false, 500).size).to eq 0
       redis { |c| c.zincrby pending_jobs, -1000, pending_queue_name }
-      subject.push_msg(queue_name, "Message 2", false)
-      expect(subject.requeue_expired(queue_name, false, 500).size).to eq 1
+      redis_service.push_msg(queue_name, "Message 2", false)
+      expect(redis_service.requeue_expired(queue_name, false, 500).size).to eq 1
       expect(redis { |c| c.llen key }).to eq 3
-      expect(redis { |c| c.lrange(key, 0, -1) }).to match_array(["Message 1", "Message 2", "Message 2"])
+      expect(redis { |c| c.lrange(key, 0, -1) }).to contain_exactly(
+        ["Message 1", "Message 2", "Message 2"]
+      )
     end
 
-    it "removes pending job once enqueued" do
-      subject.push_msg(queue_name, "Message 1", true)
-      subject.push_msg(queue_name, "Message 2", true)
-      pending_queue_name, _ = subject.reliable_pluck(queue_name, 2)
-      expect(subject.requeue_expired(queue_name, false, 500).size).to eq 0
+    it "removes pending job once enqueued", :aggregate_failures do
+      redis_service.push_msg(queue_name, "Message 1", true)
+      redis_service.push_msg(queue_name, "Message 2", true)
+      pending_queue_name, = redis_service.reliable_pluck(queue_name, 2)
+      expect(redis_service.requeue_expired(queue_name, false, 500).size).to eq 0
       redis { |c| c.zincrby pending_jobs, -1000, pending_queue_name }
-      expect(subject.requeue_expired(queue_name, false, 500).size).to eq 1
+      expect(redis_service.requeue_expired(queue_name, false, 500).size).to eq 1
       expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 0
     end
 
-    context "with batch_unique == true" do
+    context "with batch_unique == true", :aggregate_failures do
       it "requeues expired jobs that are not already present" do
-        subject.push_msg(queue_name, "Message 1", true)
-        subject.push_msg(queue_name, "Message 2", true)
-        subject.push_msg(queue_name, "Message 3", true)
-        pending_queue_name, _ = subject.reliable_pluck(queue_name, 3)
-        expect(subject.requeue_expired(queue_name, true, 500).size).to eq 0
+        redis_service.push_msg(queue_name, "Message 1", true)
+        redis_service.push_msg(queue_name, "Message 2", true)
+        redis_service.push_msg(queue_name, "Message 3", true)
+        pending_queue_name, = redis_service.reliable_pluck(
+          queue_name,
+          3
+        )
+        expect(
+          redis_service.requeue_expired(queue_name, true, 500).size
+        ).to eq 0
         redis { |c| c.zincrby pending_jobs, -1000, pending_queue_name }
-        subject.push_msg(queue_name, "Message 2", true)
-        expect(subject.requeue_expired(queue_name, true, 500).size).to eq 1
+        redis_service.push_msg(queue_name, "Message 2", true)
+        expect(
+          redis_service.requeue_expired(queue_name, true, 500).size
+        ).to eq 1
         expect(redis { |c| c.llen key }).to eq 3
-        expect(redis { |c| c.lrange(key, 0, -1) }).to match_array(["Message 1", "Message 2", "Message 3"])
+        expect(redis { |c| c.lrange(key, 0, -1) }).to contain_exactly(
+          ["Message 1", "Message 2", "Message 3"]
+        )
       end
 
-      it "removes pending job once enqueued" do
-        subject.push_msg(queue_name, "Message 1", true)
-        subject.push_msg(queue_name, "Message 2", true)
-        pending_queue_name, _ = subject.reliable_pluck(queue_name, 2)
-        expect(subject.requeue_expired(queue_name, true, 500).size).to eq 0
+      it "removes pending job once enqueued", :aggregate_failures do
+        redis_service.push_msg(queue_name, "Message 1", true)
+        redis_service.push_msg(queue_name, "Message 2", true)
+        pending_queue_name, = redis_service.reliable_pluck(
+          queue_name,
+          2
+        )
+        expect(
+          redis_service.requeue_expired(queue_name, true, 500).size
+        ).to eq 0
         redis { |c| c.zincrby pending_jobs, -1000, pending_queue_name }
-        subject.push_msg(queue_name, "Message 1", true)
-        expect(subject.requeue_expired(queue_name, true, 500).size).to eq 1
-        expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 0
+        redis_service.push_msg(queue_name, "Message 1", true)
+        expect(
+          redis_service.requeue_expired(queue_name, true, 500).size
+        ).to eq 1
+        expect(
+          redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }
+        ).to eq 0
       end
     end
   end
 
   describe "#push_messages" do
-    it "adds messages to queue" do
-      subject.push_messages(queue_name, ["My message", "My other message", "My last message"])
+    it "adds messages to queue", :aggregate_failures do
+      redis_service.push_messages(
+        queue_name,
+        ["My message", "My other message", "My last message"]
+      )
       expect(redis { |c| c.llen key }).to eq 3
-      expect(redis { |c| c.lrange key, 0, 3 }).to eq ["My message", "My other message", "My last message"]
-      expect(redis { |c| c.smembers unique_key}).to eq []
+      expect(redis { |c| c.lrange key, 0, 3 }).to eq(
+        "My message", "My other message", "My last message"
+      )
+      expect(redis { |c| c.smembers unique_key }).to eq []
     end
 
-    it "remembers unique messages if specified" do
-      subject.push_messages(queue_name, ["My message", "My other message", "My last message"], true)
-      expect(redis { |c| c.lrange key, 0, 3 }).to eq ["My message", "My other message", "My last message"]
-      expect(redis { |c| c.smembers unique_key}).to match_array ["My message", "My other message", "My last message"]
+    it "remembers unique messages if specified", :aggregate_failures do
+      redis_service.push_messages(
+        queue_name,
+        ["My message", "My other message", "My last message"],
+        remember_unique: true
+      )
+      expect(redis { |c| c.lrange key, 0, 3 }).to eq(
+        "My message", "My other message", "My last message"
+      )
+      expect(redis { |c| c.smembers unique_key }).to contain_exactly(
+        "My message", "My other message", "My last message"
+      )
     end
 
-    it "adds new messages in order" do
-      subject.push_messages(queue_name, ["My message"], true)
-      expect(redis { |c| c.smembers unique_key}).to match_array ["My message"]
-      subject.push_messages(queue_name, ["My other message", "My message", "My last message"], true)
-      expect(redis { |c| c.lrange key, 0, 3 }).to eq ["My message", "My other message", "My last message"]
-      expect(redis { |c| c.smembers unique_key}).to match_array ["My message", "My other message", "My last message"]
+    it "adds new messages in order", :aggregate_failures do
+      redis_service.push_messages(
+        queue_name,
+        ["My message"],
+        remember_unique: true
+      )
+      expect(redis { |c| c.smembers unique_key }).to contain_exactly(
+        "My message"
+      )
+      redis_service.push_messages(
+        queue_name,
+        ["My other message", "My message", "My last message"],
+        remember_unique: true
+      )
+      expect(redis { |c| c.lrange key, 0, 3 }).to eq(
+        ["My message", "My other message", "My last message"]
+      )
+      expect(redis { |c| c.smembers unique_key }).to contain_exactly(
+        "My message", "My other message", "My last message"
+      )
     end
   end
 end

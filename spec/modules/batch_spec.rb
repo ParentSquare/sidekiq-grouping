@@ -26,26 +26,36 @@ describe Sidekiq::Grouping::Batch do
       expect_batch(BatchedBothWorker, "batched_both")
     end
 
-    it "must not enqueue batched worker" do
+    it "must not enqueue batched worker based on reliable size setting" do
       ReliableBatchedSizeWorker.perform_async("bar")
       expect_batch(ReliableBatchedSizeWorker, "reliable_batched_size")
     end
 
-    it "must not enqueue batched worker" do
+    it "must not enqueue batched worker for on reliable unique size setting" do
       ReliableBatchedUniqueSizeWorker.perform_async("bar")
-      expect_batch(ReliableBatchedUniqueSizeWorker, "reliable_batched_unique_size")
+      expect_batch(
+        ReliableBatchedUniqueSizeWorker,
+        "reliable_batched_unique_size"
+      )
     end
 
-    context "in bulk" do
-      it "inserts in batches" do
+    context "when adding in bulk" do
+      it "inserts in batches", :aggregate_failures do
         messages = (0..1005).map(&:to_s)
         mock_redis = Sidekiq::Grouping::Redis.new
         allow(Sidekiq::Grouping::Redis).to receive(:new).and_return(mock_redis)
-        expect(mock_redis).to receive(:push_messages).with(anything, messages[0..999].map(&:to_json), anything).and_call_original
-        expect(mock_redis).to receive(:push_messages).with(anything, messages[1000..1005].map(&:to_json), anything).and_call_original
 
         BatchedBulkInsertWorker.perform_async(messages)
-        batch = subject.new(BatchedBulkInsertWorker.name, "batched_bulk_insert")
+        batch = batch_service.new(
+          BatchedBulkInsertWorker.name,
+          "batched_bulk_insert"
+        )
+        expect(mock_redis).to have_received(:push_messages).with(
+          anything, messages[0..999].map(&:to_json), anything
+        )
+        expect(mock_redis).to have_received(:push_messages).with(
+          anything, messages[1000..1005].map(&:to_json), anything
+        )
         expect(batch.size).to eq(1006)
       end
 
@@ -53,7 +63,7 @@ describe Sidekiq::Grouping::Batch do
         failed = false
         begin
           BatchedBulkInsertWorker.perform_async("potato")
-        rescue StandardError => e
+        rescue StandardError
           failed = true
         end
         expect(failed).to be_truthy
@@ -63,7 +73,7 @@ describe Sidekiq::Grouping::Batch do
         failed = false
         begin
           BatchedBulkInsertWorker.perform_async(["potato"], ["tomato"])
-        rescue StandardError => e
+        rescue StandardError
           failed = true
         end
         expect(failed).to be_truthy
