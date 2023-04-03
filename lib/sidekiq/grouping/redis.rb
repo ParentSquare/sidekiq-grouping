@@ -47,7 +47,7 @@ module Sidekiq
           remember_unique
         ]
         args = [messages]
-        redis { |conn| conn.evalsha @script_hashes[:merge_array], keys, args }
+        redis_call(:evalsha, @script_hashes[:merge_array], keys, args)
       end
 
       def enqueued?(name, msg)
