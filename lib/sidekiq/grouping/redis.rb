@@ -46,8 +46,8 @@ module Sidekiq
           unique_messages_key(name),
           remember_unique
         ]
-        args = [messages]
-        redis_call(:evalsha, @script_hashes[:merge_array], keys, args)
+        argv = [messages]
+        redis_call(:evalsha, @script_hashes[:merge_array], keys, argv)
       end
 
       def enqueued?(name, msg)
@@ -90,8 +90,8 @@ module Sidekiq
           Time.now.to_i,
           this_job_name(name)
         ]
-        args = [limit]
-        redis_call(:evalsha, @script_hashes[:reliable_pluck], keys, args)
+        argv = [limit]
+        redis_call(:evalsha, @script_hashes[:reliable_pluck], keys, argv)
       end
 
       def get_last_execution_time(name)
