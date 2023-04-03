@@ -91,9 +91,7 @@ module Sidekiq
           this_job_name(name)
         ]
         args = [limit]
-        redis do |conn|
-          conn.evalsha @script_hashes[:reliable_pluck], keys, args
-        end
+        redis_call(:evalsha, @script_hashes[:reliable_pluck], keys, args)
       end
 
       def get_last_execution_time(name)
@@ -127,16 +125,18 @@ module Sidekiq
       def remove_from_pending(name, batch_name)
         redis do |conn|
           conn.multi do |pipeline|
-            pipeline.del(batch_name)
-            pipeline.zrem(pending_jobs(name), batch_name)
+            redis_connection_call(pipeline, :del, batch_name)
+            redis_connection_call(
+              pipeline, :zrem, pending_jobs(name), batch_name
+            )
           end
         end
       end
 
       def requeue_expired(name, unique: false, ttl: 3600)
         redis do |conn|
-          conn.zrangebyscore(
-            pending_jobs(name), "0", Time.now.to_i - ttl
+          redis_connection_call(
+            conn, :zrangebyscore, pending_jobs(name), "0", Time.now.to_i - ttl
           ).each do |expired|
             keys = [
               expired,
@@ -144,8 +144,9 @@ module Sidekiq
               pending_jobs(name),
               unique_messages_key(name)
             ]
-            args = []
-            conn.evalsha requeue_script(unique), keys, args
+            redis_connection_call(
+              conn, :evalsha, requeue_script(unique), keys, []
+            )
           end
         end
       end
