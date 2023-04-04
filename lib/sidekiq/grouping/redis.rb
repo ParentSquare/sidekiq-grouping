@@ -112,20 +112,12 @@ module Sidekiq
 
       private
 
-      def requeue_script(unique)
-        unique ? @script_hashes[:unique_requeue] : @script_hashes[:requeue]
-      end
-
       def unique_messages_key(name)
         ns("#{name}:unique_messages")
       end
 
       def pending_jobs(name)
         ns("#{name}:pending_jobs")
-      end
-
-      def this_job_name(name)
-        ns("#{name}:#{SecureRandom.hex}")
       end
 
       def ns(key = nil)
