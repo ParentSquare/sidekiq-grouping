@@ -3,6 +3,10 @@
 module Sidekiq
   module Grouping
     class RedisScripts
+      class << self
+        include RedisDispatcher
+      end
+
       PLUCK_SCRIPT = <<-SCRIPT
         local pluck_values = redis.call('lpop', KEYS[1], ARGV[1]) or {}
         if #pluck_values > 0 then
@@ -95,6 +99,14 @@ module Sidekiq
         requeue: REQUEUE_SCRIPT,
         unique_requeue: UNIQUE_REQUEUE_SCRIPT,
         merge_array: MERGE_ARRAY_SCRIPT
+      }.freeze
+
+      HASHES = {
+        pluck: redis_call(:script, "LOAD", SCRIPTS[:pluck]),
+        reliable_pluck: redis_call(:script, "LOAD", SCRIPTS[:reliable_pluck]),
+        requeue: redis_call(:script, "LOAD", SCRIPTS[:requeue]),
+        unique_requeue: redis_call(:script, "LOAD", SCRIPTS[:unique_requeue]),
+        merge_array: redis_call(:script, "LOAD", SCRIPTS[:merge_array])
       }.freeze
     end
   end

@@ -2,24 +2,20 @@
 
 require_relative "./redis_dispatcher"
 require_relative "./redis_scripts"
+require_relative "./adapters/redis_adapter"
+require_relative "./adapters/redis_client_adapter"
 
 module Sidekiq
   module Grouping
-    class Redis # rubocop:disable Metrics/ClassLength
+    class Redis
       include RedisDispatcher
 
       def initialize
-        @script_hashes = {
-          pluck: nil,
-          reliable_pluck: nil,
-          requeue: nil,
-          unique_requeue: nil,
-          merge_array: nil
-        }
-
-        RedisScripts::SCRIPTS.each_pair do |key, value|
-          @script_hashes[key] = redis { |conn| conn.script(:load, value) }
-        end
+        @adapter = if new_redis_client?
+                     Adapters::RedisClientAdapter.new
+                   else
+                     Adapters::RedisAdapter.new
+                   end
       end
 
       def push_msg(name, msg, remember_unique: false)
@@ -39,11 +35,7 @@ module Sidekiq
       end
 
       def push_messages(name, messages, remember_unique: false)
-        if new_redis_client?
-          push_messages_new(name, remember_unique, messages)
-        else
-          push_messages_legacy(name, remember_unique, messages)
-        end
+        @adapter.push_messages(name, messages, remember_unique: remember_unique)
       end
 
       def enqueued?(name, msg)
@@ -62,28 +54,11 @@ module Sidekiq
       end
 
       def pluck(name, limit)
-        if new_redis_client?
-          redis_call(
-            :eval,
-            RedisScripts::PLUCK_SCRIPT,
-            2,
-            ns(name),
-            unique_messages_key(name),
-            limit
-          )
-        else
-          keys = [ns(name), unique_messages_key(name)]
-          args = [limit]
-          redis_call(:eval, RedisScripts::PLUCK_SCRIPT, keys, args)
-        end
+        @adapter.pluck(name, limit)
       end
 
       def reliable_pluck(name, limit)
-        if new_redis_client?
-          reliable_pluck_new(name, limit)
-        else
-          reliable_pluck_legacy(name, limit)
-        end
+        @adapter.reliable_pluck(name, limit)
       end
 
       def get_last_execution_time(name)
@@ -130,93 +105,12 @@ module Sidekiq
           redis_connection_call(
             conn, :zrangebyscore, pending_jobs(name), "0", Time.now.to_i - ttl
           ).each do |expired|
-            if new_redis_client?
-              requeue_expired_new(conn, unique, expired, name)
-            else
-              requeue_expired_legacy(conn, unique, expired, name)
-            end
+            @adapter.requeue_expired(conn, unique, expired, name)
           end
         end
       end
 
       private
-
-      def push_messages_new(name, remember_unique, messages)
-        redis_call(
-          :evalsha,
-          @script_hashes[:merge_array],
-          5,
-          ns("batches"),
-          name,
-          ns(name),
-          unique_messages_key(name),
-          remember_unique.to_s,
-          messages
-        )
-      end
-
-      def push_messages_legacy(name, remember_unique, messages)
-        keys = [
-          ns("batches"),
-          name,
-          ns(name),
-          unique_messages_key(name),
-          remember_unique.to_s
-        ]
-        argv = [messages]
-        redis_call(:evalsha, @script_hashes[:merge_array], keys, argv)
-      end
-
-      def reliable_pluck_new(name, limit)
-        redis_call(
-          :evalsha,
-          @script_hashes[:reliable_pluck],
-          5,
-          ns(name),
-          unique_messages_key(name),
-          pending_jobs(name),
-          Time.now.to_i,
-          this_job_name(name),
-          limit
-        )
-      end
-
-      def reliable_pluck_legacy(name, limit)
-        keys = [
-          ns(name),
-          unique_messages_key(name),
-          pending_jobs(name),
-          Time.now.to_i,
-          this_job_name(name)
-        ]
-        argv = [limit]
-        redis_call(:evalsha, @script_hashes[:reliable_pluck], keys, argv)
-      end
-
-      def requeue_expired_new(conn, unique, expired, name)
-        redis_connection_call(
-          conn,
-          :evalsha,
-          requeue_script(unique),
-          4,
-          expired,
-          ns(name),
-          pending_jobs(name),
-          unique_messages_key(name)
-        )
-      end
-
-      def requeue_expired_legacy(conn, unique, expired, name)
-        keys = [
-          expired,
-          ns(name),
-          pending_jobs(name),
-          unique_messages_key(name)
-        ]
-        redis_connection_call(
-          conn, :evalsha, requeue_script(unique), keys, []
-        )
-      end
 
       def requeue_script(unique)
         unique ? @script_hashes[:unique_requeue] : @script_hashes[:requeue]
