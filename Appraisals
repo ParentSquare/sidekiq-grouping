@@ -27,5 +27,5 @@ appraise 'sidekiq-7.0' do
 end
 
 appraise 'sidekiq-master' do
-  gem 'sidekiq', github: 'mperham/sidekiq'
+  gem 'sidekiq', github: 'mperham/sidekiq', branch: 'main'
 end

@@ -5,7 +5,7 @@ require_relative "./redis_scripts"
 
 module Sidekiq
   module Grouping
-    class Redis
+    class Redis # rubocop:disable Metrics/ClassLength
       include RedisDispatcher
 
       def initialize
@@ -39,15 +39,11 @@ module Sidekiq
       end
 
       def push_messages(name, messages, remember_unique: false)
-        keys = [
-          ns("batches"),
-          name,
-          ns(name),
-          unique_messages_key(name),
-          remember_unique
-        ]
-        argv = [messages]
-        redis_call(:evalsha, @script_hashes[:merge_array], keys, argv)
+        if new_redis_client?
+          push_messages_new(name, remember_unique, messages)
+        else
+          push_messages_legacy(name, remember_unique, messages)
+        end
       end
 
       def enqueued?(name, msg)
@@ -83,15 +79,11 @@ module Sidekiq
       end
 
       def reliable_pluck(name, limit)
-        keys = [
-          ns(name),
-          unique_messages_key(name),
-          pending_jobs(name),
-          Time.now.to_i,
-          this_job_name(name)
-        ]
-        argv = [limit]
-        redis_call(:evalsha, @script_hashes[:reliable_pluck], keys, argv)
+        if new_redis_client?
+          reliable_pluck_new(name, limit)
+        else
+          reliable_pluck_legacy(name, limit)
+        end
       end
 
       def get_last_execution_time(name)
@@ -138,20 +130,93 @@ module Sidekiq
           redis_connection_call(
             conn, :zrangebyscore, pending_jobs(name), "0", Time.now.to_i - ttl
           ).each do |expired|
-            keys = [
-              expired,
-              ns(name),
-              pending_jobs(name),
-              unique_messages_key(name)
-            ]
-            redis_connection_call(
-              conn, :evalsha, requeue_script(unique), keys, []
-            )
+            if new_redis_client?
+              requeue_expired_new(conn, unique, expired, name)
+            else
+              requeue_expired_legacy(conn, unique, expired, name)
+            end
           end
         end
       end
 
       private
+
+      def push_messages_new(name, remember_unique, messages)
+        redis_call(
+          :evalsha,
+          @script_hashes[:merge_array],
+          5,
+          ns("batches"),
+          name,
+          ns(name),
+          unique_messages_key(name),
+          remember_unique.to_s,
+          messages
+        )
+      end
+
+      def push_messages_legacy(name, remember_unique, messages)
+        keys = [
+          ns("batches"),
+          name,
+          ns(name),
+          unique_messages_key(name),
+          remember_unique.to_s
+        ]
+        argv = [messages]
+        redis_call(:evalsha, @script_hashes[:merge_array], keys, argv)
+      end
+
+      def reliable_pluck_new(name, limit)
+        redis_call(
+          :evalsha,
+          @script_hashes[:reliable_pluck],
+          5,
+          ns(name),
+          unique_messages_key(name),
+          pending_jobs(name),
+          Time.now.to_i,
+          this_job_name(name),
+          limit
+        )
+      end
+
+      def reliable_pluck_legacy(name, limit)
+        keys = [
+          ns(name),
+          unique_messages_key(name),
+          pending_jobs(name),
+          Time.now.to_i,
+          this_job_name(name)
+        ]
+        argv = [limit]
+        redis_call(:evalsha, @script_hashes[:reliable_pluck], keys, argv)
+      end
+
+      def requeue_expired_new(conn, unique, expired, name)
+        redis_connection_call(
+          conn,
+          :evalsha,
+          requeue_script(unique),
+          4,
+          expired,
+          ns(name),
+          pending_jobs(name),
+          unique_messages_key(name)
+        )
+      end
+
+      def requeue_expired_legacy(conn, unique, expired, name)
+        keys = [
+          expired,
+          ns(name),
+          pending_jobs(name),
+          unique_messages_key(name)
+        ]
+        redis_connection_call(
+          conn, :evalsha, requeue_script(unique), keys, []
+        )
+      end
 
       def requeue_script(unique)
         unique ? @script_hashes[:unique_requeue] : @script_hashes[:requeue]

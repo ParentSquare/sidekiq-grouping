@@ -48,34 +48,40 @@ describe Sidekiq::Grouping::Redis do
       redis_service.push_msg(queue_name, "Message 1")
       redis_service.push_msg(queue_name, "Message 2")
       redis_service.reliable_pluck(queue_name, 1000)
-      expect(redis { |c| c.llen key }).to eq 0
+      expect(redis_call(:llen, key)).to eq 0
     end
 
     it "forgets unique messages", :aggregate_failures do
       redis_service.push_msg(queue_name, "Message 1", remember_unique: true)
       redis_service.push_msg(queue_name, "Message 2", remember_unique: true)
-      expect(redis { |c| c.scard unique_key }).to eq 2
+      expect(redis_call(:scard, unique_key)).to eq 2
       redis_service.reliable_pluck(queue_name, 2)
-      expect(redis { |c| c.smembers unique_key }).to eq []
+      expect(redis_call(:smembers, unique_key)).to eq []
     end
 
     it "tracks the pending jobs", :aggregate_failures do
       redis_service.push_msg(queue_name, "Message 1", remember_unique: true)
       redis_service.push_msg(queue_name, "Message 2", remember_unique: true)
       redis_service.reliable_pluck(queue_name, 2)
-      expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 1
-      pending_queue_name = redis { |c| c.zscan(pending_jobs, 0)[1][0][0] }
-      expect(redis { |c| c.llen(pending_queue_name) }).to eq 2
+      expect(redis_call(:zcount, pending_jobs, 0, Time.now.utc.to_i)).to eq 1
+      pending_queue_name = redis_call(:zscan, pending_jobs, 0)[1][0]
+      if pending_queue_name.is_a?(Array)
+        pending_queue_name = pending_queue_name.first
+      end
+      expect(redis_call(:llen, pending_queue_name)).to eq 2
     end
 
     it "keeps extra items in the queue", :aggregate_failures do
       redis_service.push_msg(queue_name, "Message 1", remember_unique: true)
       redis_service.push_msg(queue_name, "Message 2", remember_unique: true)
       redis_service.reliable_pluck(queue_name, 1)
-      expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 1
-      pending_queue_name = redis { |c| c.zscan(pending_jobs, 0)[1][0][0] }
-      expect(redis { |c| c.llen(pending_queue_name) }).to eq 1
-      expect(redis { |c| c.llen key }).to eq 1
+      expect(redis_call(:zcount, pending_jobs, 0, Time.now.utc.to_i)).to eq 1
+      pending_queue_name = redis_call(:zscan, pending_jobs, 0)[1][0]
+      if pending_queue_name.is_a?(Array)
+        pending_queue_name = pending_queue_name.first
+      end
+      expect(redis_call(:llen, pending_queue_name)).to eq 1
+      expect(redis_call(:llen, key)).to eq 1
     end
   end
 
@@ -84,13 +90,13 @@ describe Sidekiq::Grouping::Redis do
       redis_service.push_msg(queue_name, "Message 1", remember_unique: true)
       redis_service.push_msg(queue_name, "Message 2", remember_unique: true)
       pending_queue_name, = redis_service.reliable_pluck(queue_name, 2)
-      expect(redis { |c| c.lrange(pending_queue_name, 0, -1) }).to eq(
+      expect(redis_call(:lrange, pending_queue_name, 0, -1)).to eq(
         ["Message 1", "Message 2"]
       )
       redis_service.remove_from_pending(queue_name, pending_queue_name)
-      expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 0
-      expect(redis { |c| c.lrange(pending_queue_name, 0, -1) }).to eq([])
-      expect(redis { |c| c.keys("*") }).not_to include(pending_queue_name)
+      expect(redis_call(:zcount, pending_jobs, 0, Time.now.utc.to_i)).to eq 0
+      expect(redis_call(:lrange, pending_queue_name, 0, -1)).to eq([])
+      expect(redis_call(:keys, "*")).not_to include(pending_queue_name)
     end
   end
 
@@ -102,13 +108,13 @@ describe Sidekiq::Grouping::Redis do
       expect(
         redis_service.requeue_expired(queue_name, unique: false, ttl: 500).size
       ).to eq 0
-      redis { |c| c.zincrby pending_jobs, -1000, pending_queue_name }
+      redis_call(:zincrby, pending_jobs, -1000, pending_queue_name)
       redis_service.push_msg(queue_name, "Message 2", remember_unique: false)
       expect(
         redis_service.requeue_expired(queue_name, unique: false, ttl: 500).size
       ).to eq 1
-      expect(redis { |c| c.llen key }).to eq 3
-      expect(redis { |c| c.lrange(key, 0, -1) }).to contain_exactly(
+      expect(redis_call(:llen, key)).to eq 3
+      expect(redis_call(:lrange, key, 0, -1)).to contain_exactly(
         "Message 1", "Message 2", "Message 2"
       )
     end
@@ -120,11 +126,11 @@ describe Sidekiq::Grouping::Redis do
       expect(
         redis_service.requeue_expired(queue_name, unique: false, ttl: 500).size
       ).to eq 0
-      redis { |c| c.zincrby pending_jobs, -1000, pending_queue_name }
+      redis_call(:zincrby, pending_jobs, -1000, pending_queue_name)
       expect(
         redis_service.requeue_expired(queue_name, unique: false, ttl: 500).size
       ).to eq 1
-      expect(redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }).to eq 0
+      expect(redis_call(:zcount, pending_jobs, 0, Time.now.utc.to_i)).to eq 0
     end
 
     context "with batch_unique == true", :aggregate_failures do
@@ -139,13 +145,13 @@ describe Sidekiq::Grouping::Redis do
         expect(
           redis_service.requeue_expired(queue_name, unique: true, ttl: 500).size
         ).to eq 0
-        redis { |c| c.zincrby pending_jobs, -1000, pending_queue_name }
+        redis_call(:zincrby, pending_jobs, -1000, pending_queue_name)
         redis_service.push_msg(queue_name, "Message 2", remember_unique: true)
         expect(
           redis_service.requeue_expired(queue_name, unique: true, ttl: 500).size
         ).to eq 1
-        expect(redis { |c| c.llen key }).to eq 3
-        expect(redis { |c| c.lrange(key, 0, -1) }).to contain_exactly(
+        expect(redis_call(:llen, key)).to eq 3
+        expect(redis_call(:lrange, key, 0, -1)).to contain_exactly(
           "Message 1", "Message 2", "Message 3"
         )
       end
@@ -160,13 +166,13 @@ describe Sidekiq::Grouping::Redis do
         expect(
           redis_service.requeue_expired(queue_name, unique: true, ttl: 500).size
         ).to eq 0
-        redis { |c| c.zincrby pending_jobs, -1000, pending_queue_name }
+        redis_call(:zincrby, pending_jobs, -1000, pending_queue_name)
         redis_service.push_msg(queue_name, "Message 1", remember_unique: true)
         expect(
           redis_service.requeue_expired(queue_name, unique: true, ttl: 500).size
         ).to eq 1
         expect(
-          redis { |c| c.zcount(pending_jobs, 0, Time.now.utc.to_i) }
+          redis_call(:zcount, pending_jobs, 0, Time.now.utc.to_i)
         ).to eq 0
       end
     end
@@ -178,11 +184,11 @@ describe Sidekiq::Grouping::Redis do
         queue_name,
         ["My message", "My other message", "My last message"]
       )
-      expect(redis { |c| c.llen key }).to eq 3
-      expect(redis { |c| c.lrange key, 0, 3 }).to eq(
+      expect(redis_call(:llen, key)).to eq 3
+      expect(redis_call(:lrange, key, 0, 3)).to eq(
         ["My message", "My other message", "My last message"]
       )
-      expect(redis { |c| c.smembers unique_key }).to eq []
+      expect(redis_call(:smembers, unique_key)).to eq []
     end
 
     it "remembers unique messages if specified", :aggregate_failures do
@@ -191,10 +197,10 @@ describe Sidekiq::Grouping::Redis do
         ["My message", "My other message", "My last message"],
         remember_unique: true
       )
-      expect(redis { |c| c.lrange key, 0, 3 }).to eq(
+      expect(redis_call(:lrange, key, 0, 3)).to eq(
         ["My message", "My other message", "My last message"]
       )
-      expect(redis { |c| c.smembers unique_key }).to contain_exactly(
+      expect(redis_call(:smembers, unique_key)).to contain_exactly(
         "My message", "My other message", "My last message"
       )
     end
@@ -205,7 +211,7 @@ describe Sidekiq::Grouping::Redis do
         ["My message"],
         remember_unique: true
       )
-      expect(redis { |c| c.smembers unique_key }).to contain_exactly(
+      expect(redis_call(:smembers, unique_key)).to contain_exactly(
         "My message"
       )
       redis_service.push_messages(
@@ -213,10 +219,10 @@ describe Sidekiq::Grouping::Redis do
         ["My other message", "My message", "My last message"],
         remember_unique: true
       )
-      expect(redis { |c| c.lrange key, 0, 3 }).to eq(
+      expect(redis_call(:lrange, key, 0, 3)).to eq(
         ["My message", "My other message", "My last message"]
       )
-      expect(redis { |c| c.smembers unique_key }).to contain_exactly(
+      expect(redis_call(:smembers, unique_key)).to contain_exactly(
         "My message", "My other message", "My last message"
       )
     end
