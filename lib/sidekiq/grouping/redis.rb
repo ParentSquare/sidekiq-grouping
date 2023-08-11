@@ -1,6 +1,7 @@
 module Sidekiq
   module Grouping
     class Redis
+      SCRIPT_HASHES = Concurrent::Map.new
 
       PLUCK_SCRIPT = <<-SCRIPT
         local pluck_values = redis.call('lrange', KEYS[1], 0, ARGV[1] - 1)
@@ -89,26 +90,23 @@ module Sidekiq
         end
       LUA
 
+      SCRIPTS = {
+        pluck: PLUCK_SCRIPT,
+        reliable_pluck: RELIABLE_PLUCK_SCRIPT,
+        requeue: REQUEUE_SCRIPT,
+        unique_requeue: UNIQUE_REQUEUE_SCRIPT,
+        merge_array: MERGE_ARRAY_SCRIPT
+      }.freeze
 
-      def initialize
-        scripts = {
-          pluck: PLUCK_SCRIPT,
-          reliable_pluck: RELIABLE_PLUCK_SCRIPT,
-          requeue: REQUEUE_SCRIPT,
-          unique_requeue: UNIQUE_REQUEUE_SCRIPT,
-          merge_array: MERGE_ARRAY_SCRIPT
-        }
+      class << self
+        def redis(&block)
+          Sidekiq.redis(&block)
+        end
 
-        @script_hashes = {
-          pluck: nil,
-          reliable_pluck: nil,
-          requeue: nil,
-          unique_requeue: nil,
-          merge_array: nil
-        }
-
-        scripts.each_pair do |key, value|
-          @script_hashes[key] = redis { |conn| conn.script(:load, value) }
+        def script_hash(key)
+          SCRIPT_HASHES.compute_if_absent(key) do
+            redis { |conn| conn.script(:load, SCRIPTS[key]) }
+          end
         end
       end
 
@@ -125,7 +123,7 @@ module Sidekiq
       def push_messages(name, messages, remember_unique = false)
         keys = [ns('batches'), name, ns(name), unique_messages_key(name), remember_unique]
         args = [messages]
-        redis { |conn| conn.evalsha @script_hashes[:merge_array], keys, args }
+        redis { |conn| conn.evalsha script_hash(:merge_array), keys, args }
       end
 
       def enqueued?(name, msg)
@@ -145,13 +143,13 @@ module Sidekiq
       def pluck(name, limit)
         keys = [ns(name), unique_messages_key(name)]
         args = [limit]
-        redis { |conn| conn.evalsha @script_hashes[:pluck], keys, args }
+        redis { |conn| conn.evalsha script_hash(:pluck), keys, args }
       end
 
       def reliable_pluck(name, limit)
         keys = [ns(name), unique_messages_key(name), pending_jobs(name), Time.now.to_i, this_job_name(name)]
         args = [limit]
-        redis { |conn| conn.evalsha @script_hashes[:reliable_pluck], keys, args }
+        redis { |conn| conn.evalsha script_hash(:reliable_pluck), keys, args }
       end
 
       def get_last_execution_time(name)
@@ -191,7 +189,7 @@ module Sidekiq
           conn.zrangebyscore(pending_jobs(name), '0', Time.now.to_i - ttl).each do |expired|
             keys = [expired, ns(name), pending_jobs(name), unique_messages_key(name)]
             args = []
-            script = unique ? @script_hashes[:unique_requeue] : @script_hashes[:requeue]
+            script = unique ? script_hash(:unique_requeue) : script_hash(:requeue)
             conn.evalsha script, keys, args
           end
         end
@@ -215,8 +213,12 @@ module Sidekiq
         "batching:#{key}"
       end
 
+      def script_hash(key)
+        self.class.script_hash(key)
+      end
+
       def redis(&block)
-        Sidekiq.redis(&block)
+        self.class.redis(&block)
       end
     end
   end
