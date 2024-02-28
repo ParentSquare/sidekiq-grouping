@@ -3,9 +3,7 @@
 module Sidekiq
   module Grouping
     class RedisScripts
-      class << self
-        include RedisDispatcher
-      end
+      SCRIPT_HASHES = Concurrent::Map.new
 
       PLUCK_SCRIPT = <<-SCRIPT
         local pluck_values = redis.call('lpop', KEYS[1], ARGV[1]) or {}
@@ -101,13 +99,19 @@ module Sidekiq
         merge_array: MERGE_ARRAY_SCRIPT
       }.freeze
 
-      HASHES = {
-        pluck: redis_call(:script, "LOAD", SCRIPTS[:pluck]),
-        reliable_pluck: redis_call(:script, "LOAD", SCRIPTS[:reliable_pluck]),
-        requeue: redis_call(:script, "LOAD", SCRIPTS[:requeue]),
-        unique_requeue: redis_call(:script, "LOAD", SCRIPTS[:unique_requeue]),
-        merge_array: redis_call(:script, "LOAD", SCRIPTS[:merge_array])
-      }.freeze
+      class << self
+        include RedisDispatcher
+
+        def script_hash(key)
+          SCRIPT_HASHES.compute_if_absent(key) do
+            redis_call(:script, "LOAD", SCRIPTS[key])
+          end
+        end
+      end
+
+      def script_hash(key)
+        self.class.script_hash(key)
+      end
     end
   end
 end

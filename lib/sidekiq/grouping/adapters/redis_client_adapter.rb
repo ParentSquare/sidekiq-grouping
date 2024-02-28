@@ -13,7 +13,7 @@ module Sidekiq
         def push_messages(name, messages, remember_unique: false)
           redis_call(
             :evalsha,
-            RedisScripts::HASHES[:merge_array],
+            RedisScripts.script_hash(:merge_array),
             5,
             ns("batches"),
             name,
@@ -27,7 +27,7 @@ module Sidekiq
         def pluck(name, limit)
           redis_call(
             :evalsha,
-            RedisScripts::HASHES[:pluck],
+            RedisScripts.script_hash(:pluck),
             2,
             ns(name),
             unique_messages_key(name),
@@ -38,7 +38,7 @@ module Sidekiq
         def reliable_pluck(name, limit)
           redis_call(
             :evalsha,
-            RedisScripts::HASHES[:reliable_pluck],
+            RedisScripts.script_hash(:reliable_pluck),
             5,
             ns(name),
             unique_messages_key(name),

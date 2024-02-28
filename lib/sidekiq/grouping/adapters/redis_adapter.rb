@@ -19,13 +19,13 @@ module Sidekiq
             remember_unique.to_s
           ]
           argv = [messages]
-          redis_call(:evalsha, RedisScripts::HASHES[:merge_array], keys, argv)
+          redis_call(:evalsha, RedisScripts.script_hash(:merge_array), keys, argv)
         end
 
         def pluck(name, limit)
           keys = [ns(name), unique_messages_key(name)]
           args = [limit]
-          redis_call(:evalsha, RedisScripts::HASHES[:pluck], keys, args)
+          redis_call(:evalsha, RedisScripts.script_hash(:pluck), keys, args)
         end
 
         def reliable_pluck(name, limit)
@@ -39,7 +39,7 @@ module Sidekiq
           argv = [limit]
           redis_call(
             :evalsha,
-            RedisScripts::HASHES[:reliable_pluck],
+            RedisScripts.script_hash(:reliable_pluck),
             keys,
             argv
           )
