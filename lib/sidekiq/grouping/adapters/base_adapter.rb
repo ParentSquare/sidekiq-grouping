@@ -11,9 +11,9 @@ module Sidekiq
 
         def requeue_script(unique)
           if unique
-            RedisScripts::HASHES[:unique_requeue]
+            RedisScripts.script_hash(:unique_requeue)
           else
-            RedisScripts::HASHES[:requeue]
+            RedisScripts.script_hash(:requeue)
           end
         end
 
