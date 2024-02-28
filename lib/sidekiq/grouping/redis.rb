@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-require_relative "./redis_dispatcher"
-require_relative "./redis_scripts"
-require_relative "./adapters/redis_adapter"
-require_relative "./adapters/redis_client_adapter"
+require_relative "redis_dispatcher"
+require_relative "redis_scripts"
+require_relative "adapters/redis_adapter"
+require_relative "adapters/redis_client_adapter"
 
 module Sidekiq
   module Grouping

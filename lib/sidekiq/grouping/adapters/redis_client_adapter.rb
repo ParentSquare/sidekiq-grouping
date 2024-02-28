@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "./base_adapter"
+require_relative "base_adapter"
 require_relative "../redis_dispatcher"
 require_relative "../redis_scripts"
 

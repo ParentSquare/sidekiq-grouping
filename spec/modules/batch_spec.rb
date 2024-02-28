@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-describe Sidekiq::Grouping::Batch do
+describe Sidekiq::Grouping::Batch do # rubocop:disable RSpec/SpecFilePathFormat
   subject(:batch_service) { described_class }
 
   context "when adding" do

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "./base_adapter"
+require_relative "base_adapter"
 require_relative "../redis_dispatcher"
 require_relative "../redis_scripts"
 
@@ -19,7 +19,12 @@ module Sidekiq
             remember_unique.to_s
           ]
           argv = [messages]
-          redis_call(:evalsha, RedisScripts.script_hash(:merge_array), keys, argv)
+          redis_call(
+            :evalsha,
+            RedisScripts.script_hash(:merge_array),
+            keys,
+            argv
+          )
         end
 
         def pluck(name, limit)
