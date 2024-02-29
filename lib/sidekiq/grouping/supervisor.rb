@@ -1,9 +1,15 @@
-class Sidekiq::Grouping::Supervisor
-  def requeue_expired
-    Sidekiq::Grouping::Batch.all.each do |batch|
-      next unless batch.is_a?(Sidekiq::Grouping::ReliableBatch)
+# frozen_string_literal: true
 
-      batch.requeue_expired
+module Sidekiq
+  module Grouping
+    class Supervisor
+      def requeue_expired
+        Sidekiq::Grouping::Batch.all.each do |batch|
+          next unless batch.is_a?(Sidekiq::Grouping::ReliableBatch)
+
+          batch.requeue_expired
+        end
+      end
     end
   end
 end

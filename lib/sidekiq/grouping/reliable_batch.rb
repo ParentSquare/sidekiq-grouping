@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Sidekiq
   module Grouping
     class ReliableBatch < Batch
@@ -6,9 +8,9 @@ module Sidekiq
         return unless chunk
 
         Sidekiq::Client.push(
-          'class' => @worker_class,
-          'queue' => @queue,
-          'args' => [true, chunk]
+          "class" => @worker_class,
+          "queue" => @queue,
+          "args" => [true, chunk]
         )
         @redis.remove_from_pending(@name, pending_name)
         set_current_time_as_last
@@ -21,13 +23,17 @@ module Sidekiq
       end
 
       def requeue_expired
-        @redis.requeue_expired(@name, worker_class_options['batch_unique'], reliable_ttl)
+        @redis.requeue_expired(
+          @name,
+          unique: worker_class_options["batch_unique"],
+          ttl: reliable_ttl
+        )
       end
 
       private
 
       def reliable_ttl
-        worker_class_options['batch_reliable_ttl'] || 3600
+        worker_class_options["batch_reliable_ttl"] || 3600
       end
     end
   end
