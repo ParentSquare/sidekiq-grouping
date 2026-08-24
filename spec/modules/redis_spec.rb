@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-describe Sidekiq::Grouping::Redis do # rubocop:disable RSpec/SpecFilePathFormat
+describe Sidekiq::Grouping::Redis do
   include Sidekiq::Grouping::RedisDispatcher
 
   subject(:redis_service) { described_class.new }

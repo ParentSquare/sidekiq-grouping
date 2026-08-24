@@ -8,7 +8,7 @@ module Sidekiq
         return unless chunk
 
         Sidekiq::Client.push(
-          "class" => @worker_class,
+          "class" => worker_class_constant,
           "queue" => @queue,
           "args" => [true, chunk]
         )

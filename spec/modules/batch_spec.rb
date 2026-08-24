@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-describe Sidekiq::Grouping::Batch do # rubocop:disable RSpec/SpecFilePathFormat
+describe Sidekiq::Grouping::Batch do
   subject(:batch_service) { described_class }
 
   context "when adding" do
@@ -14,6 +14,34 @@ describe Sidekiq::Grouping::Batch do # rubocop:disable RSpec/SpecFilePathFormat
     it "must not enqueue batched worker based on batch size setting" do
       BatchedSizeWorker.perform_async("bar")
       expect_batch(BatchedSizeWorker, "batched_size")
+    end
+
+    it "honours retry from sidekiq_options on flush" do
+      RetryBatchedWorker.perform_async("bar")
+
+      Sidekiq::Grouping.force_flush_for_test!
+
+      expect(RetryBatchedWorker.jobs.last["retry"]).to eq(5)
+    end
+
+    it "honours retry: false from sidekiq_options on flush" do
+      NoRetryBatchedWorker.perform_async("bar")
+
+      Sidekiq::Grouping.force_flush_for_test!
+
+      expect(NoRetryBatchedWorker.jobs.last["retry"]).to be(false)
+    end
+
+    it "honours retry from sidekiq_options on reliable flush" do
+      previous = Sidekiq::Grouping::Config.reliable
+      Sidekiq::Grouping::Config.reliable = true
+
+      RetryBatchedWorker.perform_async("bar")
+      Sidekiq::Grouping.force_flush_for_test!
+
+      expect(RetryBatchedWorker.jobs.last["retry"]).to eq(5)
+    ensure
+      Sidekiq::Grouping::Config.reliable = previous
     end
 
     it "must not enqueue batched worker based on interval setting" do
@@ -128,6 +156,13 @@ describe Sidekiq::Grouping::Batch do # rubocop:disable RSpec/SpecFilePathFormat
         have_enqueued_sidekiq_job([["bar0"], ["bar1"]])
       )
       expect(batch.size).to eq(7)
+    end
+
+    it "raises when the worker class constant is missing" do
+      batch = batch_service.new("DeletedWorker", "default")
+      allow(batch).to receive(:pluck).and_return([["bar"]])
+
+      expect { batch.flush }.to raise_error(NameError)
     end
   end
 
