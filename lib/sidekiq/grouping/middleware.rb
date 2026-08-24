@@ -3,7 +3,7 @@
 module Sidekiq
   module Grouping
     class Middleware
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
       def call(worker_class, msg, queue, redis_pool = nil)
         if worker_class.is_a?(String)
           worker_class = worker_class.camelize.constantize
@@ -36,7 +36,6 @@ module Sidekiq
           add_to_batch(worker_class, queue, msg, redis_pool)
         end
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
 
       private
 

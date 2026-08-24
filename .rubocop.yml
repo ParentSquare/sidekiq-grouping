@@ -1,5 +1,6 @@
 ---
-require: rubocop-rspec
+plugins:
+  - rubocop-rspec
 
 AllCops:
   TargetRubyVersion: 2.7.0
@@ -8,16 +9,19 @@ AllCops:
   Include:
     - ./Gemfile
     - ./Rakefile
-    - '*.gemspec'
-    - '**/*.rb'
+    - "*.gemspec"
+    - "**/*.rb"
 
-Documentation:
+Style/Documentation:
   Enabled: false
 
 Style/StringLiterals:
   EnforcedStyle: double_quotes
 
-RSpec/FilePath:
+RSpec/SpecFilePathFormat:
+  Enabled: false
+
+RSpec/SpecFilePathSuffix:
   Enabled: false
 
 RSpec/ExampleLength:
