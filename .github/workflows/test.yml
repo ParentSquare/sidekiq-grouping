@@ -14,7 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     services:
       redis:
-        image: redis:6
+        image: ${{ matrix.redis_image }}
+        # Services can't override the container command. The Valkey image
+        # appends VALKEY_EXTRA_FLAGS to valkey-server, matching ElastiCache;
+        # redis:6.2 ignores it.
+        env:
+          VALKEY_EXTRA_FLAGS: --extended-redis-compatibility yes
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -24,10 +29,10 @@ jobs:
           - 6379:6379
     strategy:
       matrix:
-        include:
-          - { ruby_version: 2.7 }
-          - { ruby_version: '3.0' }
-          - { ruby_version: 3.1 }
+        # 2.7 for smart_alerts; drop redis:6.2 once every consumer's
+        # ElastiCache group runs Valkey.
+        ruby_version: ['2.7', '3.4']
+        redis_image: ['redis:6.2', 'valkey/valkey:9.1']
     steps:
       - uses: actions/checkout@v3
 
