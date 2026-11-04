@@ -15,18 +15,18 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up Ruby ${{ matrix.ruby_version }}
+      - name: Set up Ruby 3.4
         uses: ruby/setup-ruby@v1
         with:
           bundler: 2
-          ruby-version: 2.7
+          ruby-version: '3.4'
 
       - uses: actions/cache@v3
         with:
           path: vendor/bundle
-          key: ${{ runner.os }}-gems-${{ matrix.ruby-version }}-${{ hashFiles('./*.gemspec') }}
+          key: ${{ runner.os }}-gems-3.4-${{ hashFiles('./*.gemspec') }}
           restore-keys: |
-            ${{ runner.os }}-gems-
+            ${{ runner.os }}-gems-3.4-
 
       - name: Bundle install
         run: |
