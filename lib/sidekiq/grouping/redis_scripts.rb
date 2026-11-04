@@ -103,9 +103,17 @@ module Sidekiq
         include RedisDispatcher
 
         def script_hash(key)
-          SCRIPT_HASHES.compute_if_absent(key) do
-            redis_call(:script, "LOAD", SCRIPTS[key])
-          end
+          SCRIPT_HASHES.compute_if_absent(key) { load_script(key) }
+        end
+
+        def reload_script(key)
+          SCRIPT_HASHES[key] = load_script(key)
+        end
+
+        private
+
+        def load_script(key)
+          redis_call(:script, "LOAD", SCRIPTS[key])
         end
       end
 

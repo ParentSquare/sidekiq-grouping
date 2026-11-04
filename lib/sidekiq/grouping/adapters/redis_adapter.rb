@@ -19,18 +19,15 @@ module Sidekiq
             remember_unique.to_s
           ]
           argv = [messages]
-          redis_call(
-            :evalsha,
-            RedisScripts.script_hash(:merge_array),
-            keys,
-            argv
-          )
+          with_script(:merge_array) do |sha|
+            redis_call(:evalsha, sha, keys, argv)
+          end
         end
 
         def pluck(name, limit)
           keys = [ns(name), unique_messages_key(name)]
           args = [limit]
-          redis_call(:evalsha, RedisScripts.script_hash(:pluck), keys, args)
+          with_script(:pluck) { |sha| redis_call(:evalsha, sha, keys, args) }
         end
 
         def reliable_pluck(name, limit)
@@ -42,12 +39,9 @@ module Sidekiq
             this_job_name(name)
           ]
           argv = [limit]
-          redis_call(
-            :evalsha,
-            RedisScripts.script_hash(:reliable_pluck),
-            keys,
-            argv
-          )
+          with_script(:reliable_pluck) do |sha|
+            redis_call(:evalsha, sha, keys, argv)
+          end
         end
 
         def requeue_expired(conn, unique, expired, name)
@@ -57,9 +51,9 @@ module Sidekiq
             pending_jobs(name),
             unique_messages_key(name)
           ]
-          redis_connection_call(
-            conn, :evalsha, requeue_script(unique), keys, []
-          )
+          with_script(requeue_script_key(unique)) do |sha|
+            redis_connection_call(conn, :evalsha, sha, keys, [])
+          end
         end
       end
     end

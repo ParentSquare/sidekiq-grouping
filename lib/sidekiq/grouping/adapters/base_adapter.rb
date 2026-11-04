@@ -9,12 +9,19 @@ module Sidekiq
       class BaseAdapter
         private
 
-        def requeue_script(unique)
-          if unique
-            RedisScripts.script_hash(:unique_requeue)
-          else
-            RedisScripts.script_hash(:requeue)
-          end
+        # The server drops its script cache on restart, failover and
+        # SCRIPT FLUSH, but RedisScripts keeps SHAs for the life of the
+        # process, so reload the script once on NOSCRIPT.
+        def with_script(key)
+          yield RedisScripts.script_hash(key)
+        rescue StandardError => e
+          raise unless e.message.start_with?("NOSCRIPT")
+
+          yield RedisScripts.reload_script(key)
+        end
+
+        def requeue_script_key(unique)
+          unique ? :unique_requeue : :requeue
         end
 
         def unique_messages_key(name)

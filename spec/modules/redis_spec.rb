@@ -227,4 +227,93 @@ describe Sidekiq::Grouping::Redis do # rubocop:disable RSpec/SpecFilePathFormat
       )
     end
   end
+
+  describe "after the server loses its script cache" do
+    let(:scripts) { Sidekiq::Grouping::RedisScripts }
+
+    after do
+      scripts::SCRIPTS.each_value do |source|
+        redis_call(:script, "load", source)
+      end
+    end
+
+    def flush_script_cache
+      redis_call(:script, "flush")
+    end
+
+    def script_loaded?(name)
+      result = redis_call(:script, "exists", scripts.script_hash(name))
+      [true, 1].include?(Array(result).first)
+    end
+
+    it "push_messages reloads the script and adds the messages",
+       :aggregate_failures do
+      redis_service.push_messages(queue_name, ["Message 1"])
+      flush_script_cache
+      redis_service.push_messages(queue_name, ["Message 2"])
+      expect(redis_call(:llen, key)).to eq 2
+      expect(script_loaded?(:merge_array)).to be true
+    end
+
+    it "pluck reloads the script and returns the messages",
+       :aggregate_failures do
+      redis_service.push_msg(queue_name, "Message 1")
+      redis_service.pluck(queue_name, 1)
+      redis_service.push_msg(queue_name, "Message 2")
+      flush_script_cache
+      expect(redis_service.pluck(queue_name, 1)).to eq ["Message 2"]
+      expect(script_loaded?(:pluck)).to be true
+    end
+
+    it "reliable_pluck reloads the script and plucks the messages",
+       :aggregate_failures do
+      redis_service.push_msg(queue_name, "Message 1")
+      redis_service.reliable_pluck(queue_name, 1)
+      redis_service.push_msg(queue_name, "Message 2")
+      flush_script_cache
+      redis_service.reliable_pluck(queue_name, 1)
+      expect(redis_call(:llen, key)).to eq 0
+      expect(script_loaded?(:reliable_pluck)).to be true
+    end
+
+    [false, true].each do |unique|
+      context "with unique: #{unique}" do
+        it "requeue_expired reloads the script and requeues expired jobs",
+           :aggregate_failures do
+          script = unique ? :unique_requeue : :requeue
+          redis_service.push_msg(
+            queue_name, "Message 1", remember_unique: unique
+          )
+          pending_queue_name, = redis_service.reliable_pluck(queue_name, 1)
+          redis_call(:zincrby, pending_jobs, -1000, pending_queue_name)
+          scripts.script_hash(script)
+          flush_script_cache
+          expect(
+            redis_service.requeue_expired(queue_name, unique: unique, ttl: 500)
+              .size
+          ).to eq 1
+          expect(redis_call(:llen, key)).to eq 1
+          expect(script_loaded?(script)).to be true
+        end
+      end
+    end
+
+    it "raises NOSCRIPT when the script is still missing after one reload",
+       :aggregate_failures do
+      redis_service.push_msg(queue_name, "Message 1")
+      redis_service.pluck(queue_name, 1)
+      flush_script_cache
+      allow(scripts).to receive(:reload_script).and_return("0" * 40)
+      expect { redis_service.pluck(queue_name, 1) }.to raise_error(/NOSCRIPT/)
+      expect(scripts).to have_received(:reload_script).once
+    end
+
+    it "raises errors other than NOSCRIPT without reloading",
+       :aggregate_failures do
+      redis_call(:set, key, "not a list")
+      allow(scripts).to receive(:reload_script)
+      expect { redis_service.pluck(queue_name, 1) }.to raise_error(/WRONGTYPE/)
+      expect(scripts).not_to have_received(:reload_script)
+    end
+  end
 end
